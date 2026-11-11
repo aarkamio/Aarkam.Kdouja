@@ -1,0 +1,2 @@
+91a0baf38b7c8817dd5e10581017564dbacd8a9bc37c31a731328c1a4cc1defc  kdouja-v1.0.1-linux-x64.zip
+78fdfd75b44b3cb5f591efcff23218b0a12c7c9afdc22b98a87c30c016bc1833  kdouja-v1.0.1-win-x64.zip
