@@ -1,0 +1,10 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Shell scripts must always use LF line endings (required for Docker & Linux)
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Batch and CMD files must always use CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf

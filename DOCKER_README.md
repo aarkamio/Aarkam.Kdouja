@@ -3,7 +3,7 @@
 # Aarkam Kdouja — Sovereign LSM & Direct-I/O Storage Engine
 ### Autonomous Log-Structured Merge Storage Engine, Direct NVMe PageStore & High-Throughput Substrate
 
-[![Version](https://img.shields.io/badge/version-v1.0.1--GA-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
+[![Version](https://img.shields.io/badge/version-v1.0.2--GA-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![Docker Image](https://img.shields.io/badge/docker-aarkam%2Faarkam.kdouja-2496ED.svg?style=for-the-badge&logo=docker)](https://hub.docker.com/r/aarkam/aarkam.kdouja)
 [![Target OS](https://img.shields.io/badge/platform-Linux%20x64%20%7C%20Windows%20x64-333333.svg?style=for-the-badge&logo=linux)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![Architecture](https://img.shields.io/badge/arch-x86__64%20(AVX2)-orange.svg?style=for-the-badge)](https://github.com/aarkamio/Aarkam.Kdouja)
@@ -21,7 +21,7 @@
 Kdouja serves as the foundational storage substrate for:
 1. **Aarkam Rokka**: Powers local object catalog indexing, bucket metadata tables, and high-frequency SSTable deduplication.
 2. **Aarkam Abodi**: Powers unbuffered 66,048-byte physical block allocations, Cauchy shard placement, and direct NVMe queue saturation.
-3. **Autonomous Edge Nodes**: Operates as a zero-dependency, self-contained embedded storage engine or network daemon (`kdoujad`) with dedicated inspection tooling (`kdouja-cli`).
+3. **Autonomous Edge Nodes**: Operates as a zero-dependency, self-contained embedded storage engine or network daemon (`kdoujad`) with dedicated inspection tooling (`kdouja`).
 
 Engineered strictly for **zero-egress, air-gapped sovereign datacenters**, Kdouja operates with complete autonomy—requiring zero external database dependencies (no Redis, no ZooKeeper), zero third-party internet callbacks, and zero native C++ redistributable packages.
 
@@ -34,7 +34,7 @@ Engineered strictly for **zero-egress, air-gapped sovereign datacenters**, Kdouj
 ```bash
 docker pull aarkam/aarkam.kdouja:latest
 # or explicit version
-docker pull aarkam/aarkam.kdouja:v1.0.1
+docker pull aarkam/aarkam.kdouja:v1.0.2
 ```
 
 ---
@@ -53,7 +53,7 @@ docker run -d \
   -e KDOUJA_BASE_DIRECTORY="/var/lib/kdouja" \
   -e KDOUJA_MEMTABLE_FLUSH_MB="32" \
   -e KDOUJA_ENABLE_DIRECT_IO="false" \
-  aarkam/aarkam.kdouja:v1.0.1
+  aarkam/aarkam.kdouja:v1.0.2
 ```
 
 Check server health:
@@ -63,30 +63,35 @@ curl http://localhost:57771/healthz
 
 ---
 
-### Mode B: Enterprise CLI & Inspector (`kdouja-cli`)
+### Mode B: Enterprise CLI & Inspector (`kdouja`)
 
-Use the bundled `kdouja-cli` tool to query keys, inspect SSTables, view WAF/RAF metrics, and trigger compactions:
+Use the bundled `kdouja` tool to query keys, inspect SSTables, view metrics, trigger compactions, or run the interactive shell. Note that `--dir` automatically defaults to `/var/lib/kdouja` (`KDOUJA_BASE_DIRECTORY`):
 
 ```bash
 # Display engine diagnostics in structured JSON
 docker run --rm \
   -v kdouja_data:/var/lib/kdouja \
-  aarkam/aarkam.kdouja kdouja-cli info --dir /var/lib/kdouja --json
+  aarkam/aarkam.kdouja info --json
 
-# Store a key-value record
+# Store a key-value record (direct shorthand or 'kv put')
 docker run --rm \
   -v kdouja_data:/var/lib/kdouja \
-  aarkam/aarkam.kdouja kdouja-cli kv put "config:mode" "sovereign" --dir /var/lib/kdouja --json
+  aarkam/aarkam.kdouja put "config:mode" "sovereign"
 
-# Read a record in table format
+# Read a record
 docker run --rm \
   -v kdouja_data:/var/lib/kdouja \
-  aarkam/aarkam.kdouja kdouja-cli kv get "config:mode" --dir /var/lib/kdouja --table
+  aarkam/aarkam.kdouja get "config:mode"
 
 # Trigger manual SSTable compaction pass
 docker run --rm \
   -v kdouja_data:/var/lib/kdouja \
-  aarkam/aarkam.kdouja kdouja-cli compact --dir /var/lib/kdouja --json
+  aarkam/aarkam.kdouja compact --json
+
+# Launch interactive administrative REPL shell
+docker run -it --rm \
+  -v kdouja_data:/var/lib/kdouja \
+  aarkam/aarkam.kdouja repl
 ```
 
 ---
@@ -135,7 +140,7 @@ version: '3.8'
 
 services:
   kdouja:
-    image: aarkam/aarkam.kdouja:v1.0.1
+    image: aarkam/aarkam.kdouja:v1.0.2
     container_name: aarkam-kdouja
     restart: unless-stopped
     ports:

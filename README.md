@@ -1,17 +1,17 @@
-# Aarkam.Kdouja (Storage Engine v1.0.1)
+# Aarkam.Kdouja (Storage Engine v1.0.2)
 
-[![Version](https://img.shields.io/badge/version-kdouja--v1.0.1-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
+[![Version](https://img.shields.io/badge/version-kdouja--v1.0.2-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![Docker Image](https://img.shields.io/badge/docker-aarkam%2Faarkam.kdouja-2496ED.svg?style=for-the-badge&logo=docker)](https://hub.docker.com/r/aarkam/aarkam.kdouja)
 [![GitHub Repo](https://img.shields.io/badge/github-aarkamio%2FAarkam.Kdouja-181717.svg?style=for-the-badge&logo=github)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![.NET Multi-Target](https://img.shields.io/badge/.NET-8.0%20(LTS)%20%7C%2010.0-512BD4.svg?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![Engine Layer](https://img.shields.io/badge/Layer-Standalone%20LSM%20%26%20Direct%20I%2FO-blue.svg?style=for-the-badge)]()
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-teal.svg?style=for-the-badge&logo=linux)]()
 [![Durability](https://img.shields.io/badge/Durability-Hardware%20Fsync%20%26%20AES--256-success.svg?style=for-the-badge)]()
-[![Tests](https://img.shields.io/badge/Tests-498%20Passed%20(100%25)-brightgreen.svg?style=for-the-badge)]()
+[![Tests](https://img.shields.io/badge/Tests-503%20Passed%20(100%25)-brightgreen.svg?style=for-the-badge)]()
 
 **Aarkam.Kdouja** is an enterprise-grade, high-performance standalone Log-Structured Merge-tree (LSM-tree) and physical Direct I/O block storage engine engineered in C# for modern .NET runtimes (.NET 8.0 LTS and .NET 10.0).
 
-Designed to be consumed both as an **in-process embedded storage engine** (analogous to RocksDB, Pebble, or SQLite) and as an **autonomous daemon** (`kdoujad`) with dedicated administrative tooling (`kdouja-cli`) and a production Docker container (`aarkam/aarkam.kdouja`).
+Designed to be consumed both as an **in-process embedded storage engine** (analogous to RocksDB, Pebble, or SQLite) and as an **autonomous daemon** (`kdoujad`) with dedicated administrative tooling (`kdouja`) and a production Docker container (`aarkam/aarkam.kdouja`).
 
 ---
 
@@ -73,7 +73,7 @@ Designed to be consumed both as an **in-process embedded storage engine** (analo
 Unlike RocksDB, Pebble, BadgerDB, or LMDB—which are strictly libraries requiring developers to write their own network servers—Kdouja ships as:
 1. **Embedded NuGet Library** (`Aarkam.Kdouja.Engine`) for sub-microsecond in-process operations.
 2. **Autonomous Network Daemon** (`kdoujad`) with high-throughput binary gRPC streaming (Port 57771).
-3. **Enterprise Inspection CLI** (`kdouja-cli`) powered by `System.CommandLine` with machine-readable `--json` and `--table` output formats.
+3. **Enterprise Inspection CLI** (`kdouja`) powered by `System.CommandLine` with machine-readable `--json` and `--table` output formats.
 4. **Official Docker Container** ([`aarkam/aarkam.kdouja`](https://hub.docker.com/r/aarkam/aarkam.kdouja)).
 
 ---
@@ -86,12 +86,12 @@ D:\repos\Aarkam.IO\V2\Aarkam.Kdouja.SAT\
 │   ├── Aarkam.Kdouja.Abstractions/     # Core database interfaces, options, and error models
 │   ├── Aarkam.Kdouja.Engine/           # Embedded LSM-Tree engine & Direct I/O PageStore
 │   ├── Aarkam.Kdouja.Server/           # Standalone gRPC & HTTP server daemon (kdoujad)
-│   ├── Aarkam.Kdouja.Cli/              # Inspection, compaction & benchmarking CLI (kdouja-cli)
+│   ├── Aarkam.Kdouja.Cli/              # Inspection, compaction & benchmarking CLI (kdouja)
 │   └── Aarkam.Kdouja.Client/           # High-throughput client SDK for remote connections
 ├── tests/
 │   ├── Aarkam.Kdouja.Tests.Common/     # Shared test infrastructure & temporary directories
-│   └── Aarkam.Kdouja.Tests.Unit/       # 498 automated unit tests (100% passing)
-├── nuget/                              # Generated NuGet packages (v1.0.1)
+│   └── Aarkam.Kdouja.Tests.Unit/       # 503 automated unit tests (100% passing)
+├── nuget/                              # Generated NuGet packages (v1.0.2)
 └── Aarkam.Kdouja.slnx                  # Solution descriptor
 ```
 
@@ -101,7 +101,7 @@ D:\repos\Aarkam.IO\V2\Aarkam.Kdouja.SAT\
 
 Add the package reference to your project:
 ```xml
-<PackageReference Include="Aarkam.Kdouja.Engine" Version="1.0.1" />
+<PackageReference Include="Aarkam.Kdouja.Engine" Version="1.0.2" />
 ```
 
 ```csharp
@@ -150,30 +150,33 @@ await foreach (var kv in engine.ScanAsync(Encoding.UTF8.GetBytes("user:"), Encod
 
 ---
 
-## 🛠️ 2. Standalone CLI Tooling (`kdouja-cli`)
+## 🛠️ 2. Standalone CLI Tooling (`kdouja`)
 
-`kdouja-cli` is built with `System.CommandLine` and provides administrative inspection, recovery, compaction, and benchmarking:
+`kdouja` is built with `System.CommandLine` and provides administrative inspection, recovery, compaction, benchmarking, and an interactive shell. Running `kdouja` with no arguments (or `kdouja repl`) enters interactive REPL mode:
 
 ```bash
-# Display database stats, sequence number, and SSTable distribution in JSON
-kdouja-cli info --dir ./kdouja_data --json
+# Launch interactive administrative REPL shell
+kdouja repl
 
-# Read and write records directly
-kdouja-cli kv put "sensor:temp" "24.5C" --dir ./kdouja_data --json
-kdouja-cli kv get "sensor:temp" --dir ./kdouja_data --table
-kdouja-cli kv delete "sensor:temp" --dir ./kdouja_data
+# Display database stats, sequence number, and SSTable distribution in JSON
+kdouja info --json
+
+# Read and write records directly (supports 'kdouja put/get' or 'kdouja kv put/get')
+kdouja put "sensor:temp" "24.5C" --json
+kdouja get "sensor:temp" --table
+kdouja delete "sensor:temp"
 
 # Scan keys with limit
-kdouja-cli kv scan --dir ./kdouja_data --start "sensor:" --limit 100 --json
+kdouja scan --start "sensor:" --limit 100 --json
 
 # Trigger manual SSTable compaction pass
-kdouja-cli compact --dir ./kdouja_data --json
+kdouja compact --json
 
 # Run high-throughput parallel write and read benchmark
-kdouja-cli bench --dir ./kdouja_data --ops 50000 --threads 8
+kdouja bench --ops 50000 --threads 8
 
-# Inspect physical SSTable metadata and restart points
-kdouja-cli dump-sst ./kdouja_data/sst/000001.sst --json
+# Inspect physical SSTable metadata and bloom filters
+kdouja dump-sst ./kdouja_data/sstables/sst_000001.sst --json
 ```
 
 ---
@@ -201,7 +204,7 @@ Official Docker image: [**`aarkam/aarkam.kdouja`**](https://hub.docker.com/r/aar
 ```bash
 docker pull aarkam/aarkam.kdouja:latest
 # or explicit version
-docker pull aarkam/aarkam.kdouja:v1.0.1
+docker pull aarkam/aarkam.kdouja:v1.0.2
 ```
 
 ### Run Autonomous Engine Daemon
@@ -212,7 +215,7 @@ docker run -d \
   -v kdouja_data:/var/lib/kdouja \
   -e KDOUJA_BASE_DIRECTORY="/var/lib/kdouja" \
   -e KDOUJA_ENABLE_DIRECT_IO="false" \
-  aarkam/aarkam.kdouja:v1.0.1
+  aarkam/aarkam.kdouja:v1.0.2
 ```
 
 ### Run CLI Commands via Container
@@ -263,7 +266,7 @@ To ensure tamper resistance while maintaining maximum runtime performance in con
 ```
 ┌─────────────────────────────────┐       ┌─────────────────────────────────┐       ┌─────────────────────────────────┐
 │  1. Extract Node Fingerprint    │  ───> │  2. Issue Activation Bundle     │  ───> │  3. Apply & Seal Once           │
-│  kdouja-cli license fingerprint │       │  Generated & Signed by Aarkam   │       │  kdouja-cli license apply       │
+│  kdouja license fingerprint     │       │  Generated & Signed by Aarkam   │       │  kdouja license apply           │
 └─────────────────────────────────┘       └─────────────────────────────────┘       └─────────────────────────────────┘
                                                                                                │
                                                                                                ▼
@@ -282,9 +285,9 @@ To ensure tamper resistance while maintaining maximum runtime performance in con
 #### Step 1: Probe Node Fingerprint
 Before issuing a quarterly activation bundle, extract the host's deterministic hardware fingerprint:
 ```bash
-kdouja-cli license fingerprint --table
+kdouja license fingerprint --table
 # or JSON format:
-kdouja-cli license fingerprint --json
+kdouja license fingerprint --json
 ```
 *Output:*
 ```
@@ -304,7 +307,7 @@ kdouja-cli license fingerprint --json
 #### Step 2: Apply and Seal the Activation Bundle
 Apply the issued quarterly bundle to the database directory:
 ```bash
-kdouja-cli license apply --file /path/to/kdouja-license.arkbundle --dir /var/lib/kdouja
+kdouja license apply --file /path/to/kdouja-license.arkbundle --dir /var/lib/kdouja
 ```
 * **Single Registration & Sealing**: Kdouja verifies the RSA-4096 / SHA-512 PSS signature, ensures the target fingerprint matches the node, and writes a cryptographic seal in `.kdouja_audit`.
 * **Zero Overhead**: Routine database reads, writes, and restarts bypass hardware querying for maximum microsecond latency.
@@ -312,7 +315,7 @@ kdouja-cli license apply --file /path/to/kdouja-license.arkbundle --dir /var/lib
 
 #### Step 3: Check License & Audit Status
 ```bash
-kdouja-cli license status --dir /var/lib/kdouja
+kdouja license status --dir /var/lib/kdouja
 ```
 
 ---

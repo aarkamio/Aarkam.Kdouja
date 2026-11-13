@@ -1,12 +1,12 @@
 # =========================================================================
-# Aarkam Kdouja — Sovereign LSM & Direct-I/O Storage Engine (v1.0.1)
+# Aarkam Kdouja — Sovereign LSM & Direct-I/O Storage Engine (v1.0.2)
 # Production Container Image (Option A: Release Artifact Distribution)
 # =========================================================================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 
 LABEL org.opencontainers.image.title="Aarkam Kdouja" \
       org.opencontainers.image.description="Sovereign Log-Structured Merge Storage Engine & Direct NVMe PageStore Substrate" \
-      org.opencontainers.image.version="1.0.1" \
+      org.opencontainers.image.version="1.0.2" \
       org.opencontainers.image.vendor="Aarkam.IO" \
       org.opencontainers.image.licenses="Proprietary"
 
@@ -26,13 +26,17 @@ WORKDIR /workspace
 COPY dist/linux/ /app/
 
 # Ensure execution permissions on native binaries and scripts, and symlink to PATH
-RUN chmod +x /app/kdoujad /app/kdouja-cli /app/install-kdouja.sh /app/entrypoint.sh 2>/dev/null || true \
+RUN chmod +x /app/kdoujad /app/kdouja /app/kdouja-cli /app/install-kdouja.sh /app/entrypoint.sh 2>/dev/null || true \
+    && ( [ -f /app/kdouja ] && ln -sf /app/kdouja /app/kdouja-cli || true ) \
+    && ( [ -f /app/kdouja-cli ] && ln -sf /app/kdouja-cli /app/kdouja || true ) \
     && ln -sf /app/kdoujad /usr/local/bin/kdoujad \
-    && ln -sf /app/kdouja-cli /usr/local/bin/kdouja-cli
+    && ( [ -f /app/kdouja ] && ln -sf /app/kdouja /usr/local/bin/kdouja || ln -sf /app/kdouja-cli /usr/local/bin/kdouja ) \
+    && ( [ -f /app/kdouja ] && ln -sf /app/kdouja /usr/local/bin/kdouja-cli || ln -sf /app/kdouja-cli /usr/local/bin/kdouja-cli )
 
 # Environment defaults
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     KDOUJA_BASE_DIRECTORY="/var/lib/kdouja" \
+    Kdouja__BaseDirectory="/var/lib/kdouja" \
     KDOUJA_MEMTABLE_FLUSH_MB="32" \
     KDOUJA_ENABLE_DIRECT_IO="false" \
     KDOUJA_ENABLE_WAL_FSYNC="true"

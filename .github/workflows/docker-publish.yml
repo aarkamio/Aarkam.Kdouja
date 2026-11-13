@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Image Version Tag (e.g. 1.0.1)'
+        description: 'Image Version Tag (e.g. 1.0.2)'
         required: true
-        default: '1.0.1'
+        default: '1.0.2'
       release_tag:
-        description: 'GitHub Release Tag to fetch binary from (e.g. kdouja-v1.0.1 or v1.0.1)'
+        description: 'GitHub Release Tag to fetch binary from (e.g. kdouja-v1.0.2 or v1.0.2)'
         required: false
-        default: 'kdouja-v1.0.1'
+        default: 'kdouja-v1.0.2'
 
 permissions:
   contents: read
@@ -51,7 +51,7 @@ jobs:
           CLEAN_VER="${CLEAN_VER#v}"
           CLEAN_VER="${CLEAN_VER#-}"
           if [ -z "${CLEAN_VER}" ]; then
-            CLEAN_VER="${{ github.event.inputs.version || '1.0.1' }}"
+            CLEAN_VER="${{ github.event.inputs.version || '1.0.2' }}"
           fi
           
           echo "version=${CLEAN_VER}" >> $GITHUB_OUTPUT
@@ -160,7 +160,7 @@ jobs:
             exit 1
           fi
 
-          chmod +x dist/linux/kdoujad dist/linux/kdouja-cli dist/linux/install-kdouja.sh dist/linux/entrypoint.sh 2>/dev/null || true
+          chmod +x dist/linux/kdoujad dist/linux/kdouja dist/linux/kdouja-cli dist/linux/install-kdouja.sh dist/linux/entrypoint.sh 2>/dev/null || true
           echo "Payload staged successfully:"
           ls -la dist/linux/
 
