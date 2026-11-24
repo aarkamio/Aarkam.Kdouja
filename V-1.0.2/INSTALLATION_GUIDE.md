@@ -106,7 +106,72 @@ kdoujad.exe
 
 ---
 
-## 4. In-Process Library Embedding (.NET 8 & 10)
+## 4. Sovereign Licensing, 30-Day Free Trial & Activation (`.arkbundle` / `.arklic`)
+
+**Aarkam Kdouja** operates completely offline (zero telemetry / zero phone-home) under an **Aarkam Sovereign Root CA** cryptographic license model:
+
+| Mode / Tier | Duration | Behavior | Activation Method |
+| :--- | :--- | :--- | :--- |
+| **Community Evaluation** | **Free for first 30 Days** | Full read/write access (up to 10 TB) | Automatic cryptographically sealed `.kdouja_init` trial on first startup |
+| **Quarterly Subscription** | **90 Days (3 Months)** | Production workloads (up to 50 TB), hardware-locked | `.arkbundle` / `.arklic` via `kdouja license apply` |
+| **Enterprise Sovereign** | **Annual / Multi-Year** | Unlimited capacity, multi-factor hardware lock | Sovereign Genesis `.arkbundle` via `kdouja license apply` |
+
+> **What happens when the 30-day trial or license expires?**
+> Kdouja automatically transitions into **Read-Only License-Locked mode**: all write operations (`put`, `delete`, `WriteBatch`) are rejected with `LICENSE_VIOLATION` / gRPC `PermissionDenied`, while read operations (`get`, `scan`) and `kdouja license apply` remain available so you never lose access to your data.
+
+### Step 1: Extract Node Hardware Fingerprint
+Extract the deterministic hardware fingerprint (`ARK-FP-...`) of the target host or container:
+
+```bash
+# Linux / Windows
+kdouja license fingerprint
+
+# Docker
+docker exec kdouja-server kdouja license fingerprint
+```
+
+Submit this fingerprint to the **Aarkam Sovereign Portal** (or your Aarkam account representative) to issue your signed **`.arkbundle`** or **`.arklic`** certificate.
+
+### Step 2: Inspect the Activation Bundle Offline (Optional)
+Verify the Aarkam Sovereign Root CA RSA-4096 / SHA-512 PSS signature and hardware compatibility before applying:
+
+```bash
+kdouja license inspect --file /path/to/kdouja-license.arkbundle
+```
+
+### Step 3: Activate or Renew (Update) Your License
+Apply the signed `.arkbundle` or `.arklic` file to your database directory. Use the **exact same command** both for initial activation and for **updating/renewing** an existing license before or after expiration:
+
+```bash
+# Linux (default data dir: /var/lib/kdouja)
+kdouja license apply --file /path/to/kdouja-license.arkbundle --dir /var/lib/kdouja
+
+# Windows PowerShell (default data dir: C:\ProgramData\Aarkam\Kdouja)
+kdouja license apply --file C:\path\to\kdouja-license.arkbundle --dir "C:\ProgramData\Aarkam\Kdouja"
+
+# Docker (mount the bundle read-only into the container)
+docker run --rm \
+  -v /var/lib/kdouja:/var/lib/kdouja \
+  -v /path/to/kdouja-license.arkbundle:/tmp/license.arkbundle:ro \
+  aarkam/aarkam.kdouja:v1.0.2 \
+  license apply --file /tmp/license.arkbundle --dir /var/lib/kdouja
+```
+
+- Kdouja verifies the **Aarkam Sovereign Root CA** signature, `Product = Kdouja`, payment status, expiration, and node hardware fingerprint, then seals `kdouja.license` and `.kdouja_audit` inside the data directory.
+- If `kdoujad` was in Read-Only License-Locked mode, applying a valid bundle unlocks write operations immediately without requiring data migration.
+
+### Step 4: Verify License Status & Re-Audit
+```bash
+# Check active tier, days remaining, and cryptographic audit seal
+kdouja license status --dir /var/lib/kdouja
+
+# Force a hardware re-audit after an engine upgrade
+kdouja license reaudit --dir /var/lib/kdouja --force
+```
+
+---
+
+## 5. In-Process Library Embedding (.NET 8 & 10)
 
 Add package to your project:
 ```xml
