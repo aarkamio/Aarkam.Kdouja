@@ -60,5 +60,5 @@ Engineered to operate either as an in-process embedded storage library or an aut
 
 ```text
 17f5d3733fdff119d717d17994f8019a85ba8bba91e17c82af9c4712cc555c87  kdouja-v1.0.3-linux-x64.zip
-0a647473aacdbbd2069dfc8dd8b893a953c4793f86bfc32b4d84e35baea54123  kdouja-v1.0.3-win-x64.zip
+ee3645a2ce3761162c80f01b92ddca639715b61ec2af97b6fadd66387778eb8b  kdouja-v1.0.3-win-x64.zip
 ```

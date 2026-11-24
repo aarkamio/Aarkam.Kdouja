@@ -153,10 +153,10 @@ $kdoujaExe = Join-Path $InstallDir "kdouja.exe"
 $kdoujaCliExe = Join-Path $InstallDir "kdouja-cli.exe"
 $kdoujadExe = Join-Path $InstallDir "kdoujad.exe"
 
-if (Test-Path $kdoujaExe -and -not (Test-Path $kdoujaCliExe)) {
+if ((Test-Path $kdoujaExe) -and -not (Test-Path $kdoujaCliExe)) {
     Copy-Item $kdoujaExe $kdoujaCliExe -Force
 }
-if (Test-Path $kdoujaCliExe -and -not (Test-Path $kdoujaExe)) {
+if ((Test-Path $kdoujaCliExe) -and -not (Test-Path $kdoujaExe)) {
     Copy-Item $kdoujaCliExe $kdoujaExe -Force
 }
 
