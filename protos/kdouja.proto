@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+option csharp_namespace = "Aarkam.Kdouja.Server.Protos";
+
+package aarkam.kdouja;
+
+// Generic high-performance Key-Value Service for standalone Kdouja engine
+service KeyValueService {
+  rpc Get (GetRequest) returns (GetResponse);
+  rpc Put (PutRequest) returns (PutResponse);
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+  rpc WriteBatch (BatchWriteRequest) returns (BatchWriteResponse);
+  rpc Scan (ScanRequest) returns (stream KeyValueRecord);
+  rpc GetMetrics (MetricsRequest) returns (MetricsResponse);
+}
+
+message GetRequest {
+  bytes key = 1;
+}
+
+message GetResponse {
+  bool found = 1;
+  bytes value = 2;
+}
+
+message PutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool sync = 3;
+}
+
+message PutResponse {
+  bool success = 1;
+  int64 sequence_number = 2;
+}
+
+message DeleteRequest {
+  bytes key = 1;
+  bool sync = 2;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  int64 sequence_number = 2;
+}
+
+enum OperationType {
+  PUT = 0;
+  DELETE = 1;
+}
+
+message MutationEntry {
+  OperationType type = 1;
+  bytes key = 2;
+  bytes value = 3;
+}
+
+message BatchWriteRequest {
+  repeated MutationEntry mutations = 1;
+  bool sync = 2;
+}
+
+message BatchWriteResponse {
+  bool success = 1;
+  int32 applied_count = 2;
+}
+
+message ScanRequest {
+  bytes start_key = 1;
+  bytes end_key = 2;
+  int32 limit = 3;
+}
+
+message KeyValueRecord {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message MetricsRequest {}
+
+message MetricsResponse {
+  int64 sequence_number = 1;
+  int32 active_sstables = 2;
+  int64 memtable_bytes = 3;
+  int64 total_bytes_written = 4;
+  int64 total_bytes_read = 5;
+  int64 write_amplification = 6;
+  int64 read_amplification = 7;
+  double bloom_filter_hit_rate = 8;
+}
+
+// High-level chunk streaming service for Aarkam storage fabric
+service StorageService {
+  rpc StoreChunk (stream ChunkWriteRequest) returns (ChunkWriteResponse);
+  rpc RetrieveChunk (ChunkReadRequest) returns (stream ChunkReadResponse);
+}
+
+message ChunkWriteRequest {
+  string file_id = 1;
+  int32 chunk_index = 2;
+  bytes ciphertext = 3;
+  bytes iv = 4;
+  bytes tag = 5;
+}
+
+message ChunkWriteResponse {
+  bool success = 1;
+  string message = 2;
+  int64 page_id = 3;
+}
+
+message ChunkReadRequest {
+  string file_id = 1;
+  int32 chunk_index = 2;
+}
+
+message ChunkReadResponse {
+  bytes ciphertext = 1;
+  bytes iv = 2;
+  bytes tag = 3;
+}

@@ -14,10 +14,11 @@ set -Eeuo pipefail
 # Default Configuration & Paths
 # ------------------------------------------------------------------------------
 INSTALL_DIR="/usr/local/bin"
-DATA_DIR="/var/lib/kdouja"
+DATA_DIR=""
 CONFIG_DIR="/etc/aarkam/kdouja"
 SOURCE_PATH=""
 PORT=57771
+STORAGE_PREFERENCE="performance"
 USER_ONLY="false"
 INSTALL_SERVICE="false"
 
@@ -46,8 +47,9 @@ Options:
   --source <path>         Path to pre-published binaries directory or .zip release bundle
   --install-dir <path>    Target binary directory (default: ${INSTALL_DIR})
   --data-dir <path>       Target data storage directory (default: ${DATA_DIR})
-  --port <number>         Default daemon TCP port (default: ${PORT})
-  --service               Install and enable systemd service for kdoujad daemon
+  --port <number>                 Default daemon TCP port (default: ${PORT})
+  --storage-preference <mode>     Non-OS drive ranking: performance (NVMe->SSD->HDD, default) or capacity (HDD->SSD->NVMe)
+  --service                       Install and enable systemd service for kdoujad daemon
   --user-only             Install into \${HOME}/.local/bin without requiring root/sudo
   -h, --help              Display this help message
 
@@ -69,8 +71,9 @@ while [[ $# -gt 0 ]]; do
         --source)       SOURCE_PATH="$2"; shift 2 ;;
         --install-dir)  INSTALL_DIR="$2"; shift 2 ;;
         --data-dir)     DATA_DIR="$2"; shift 2 ;;
-        --port)         PORT="$2"; shift 2 ;;
-        --service)      INSTALL_SERVICE="true"; shift 1 ;;
+        --port)                 PORT="$2"; shift 2 ;;
+        --storage-preference)   STORAGE_PREFERENCE="$(echo "$2" | tr '[:upper:]' '[:lower:]')"; shift 2 ;;
+        --service)              INSTALL_SERVICE="true"; shift 1 ;;
         --user-only)    USER_ONLY="true"; shift 1 ;;
         -h|--help)      usage ;;
         *)              log_error "Unknown argument: $1"; usage ;;
@@ -94,7 +97,9 @@ log_ok "Architecture verified: ${ARCH}"
 
 if [[ "${USER_ONLY}" == "true" ]]; then
     INSTALL_DIR="${HOME}/.local/bin"
-    DATA_DIR="${HOME}/.kdouja/data"
+    if [[ -z "${DATA_DIR}" ]]; then
+        DATA_DIR="${HOME}/.kdouja/data"
+    fi
     CONFIG_DIR="${HOME}/.config/aarkam/kdouja"
     mkdir -p "${INSTALL_DIR}" "${DATA_DIR}" "${CONFIG_DIR}"
     log_info "Installing in user space: ${INSTALL_DIR}"
@@ -103,6 +108,79 @@ else
         log_error "Root or sudo privileges required for system-wide install. Use --user-only for non-root install."
         exit 1
     fi
+
+    # Auto-select non-OS storage partition ranked by media tier (NVMe -> SSD -> Unknown -> HDD) then largest free space
+    if [[ -z "${DATA_DIR}" ]]; then
+        MIN_PREFERRED_BYTES=10737418240 # 10 GiB guardrail
+        CANDIDATES_FILE="$(mktemp)"
+
+        while read -r dev fstype avail mp; do
+            [[ -z "${mp}" || ! -d "${mp}" || ! -w "${mp}" ]] && continue
+            base_dev="$(lsblk -ndo PKNAME "${dev}" 2>/dev/null | head -n 1 || true)"
+            if [[ -z "${base_dev}" ]]; then
+                base_dev="$(basename "${dev}" | sed -E 's/p?[0-9]+$//')"
+            fi
+            tran="$(lsblk -ndo TRAN "/dev/${base_dev}" 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]' || true)"
+            rot=""
+            if [[ -r "/sys/block/${base_dev}/queue/rotational" ]]; then
+                rot="$(cat "/sys/block/${base_dev}/queue/rotational" 2>/dev/null || true)"
+            fi
+
+            media="Unknown"
+            if [[ "${tran}" == "nvme" || "${base_dev}" == nvme* ]]; then
+                media="NVMe"
+            elif [[ "${rot}" == "0" ]]; then
+                media="SSD"
+            elif [[ "${rot}" == "1" ]]; then
+                media="HDD"
+            fi
+
+            if [[ "${STORAGE_PREFERENCE}" == "capacity" ]]; then
+                case "${media}" in
+                    HDD)     rank=1 ;;
+                    Unknown) rank=2 ;;
+                    SSD)     rank=3 ;;
+                    NVMe)    rank=4 ;;
+                    *)       rank=2 ;;
+                esac
+            else
+                case "${media}" in
+                    NVMe)    rank=1 ;;
+                    SSD)     rank=2 ;;
+                    Unknown) rank=3 ;;
+                    HDD)     rank=4 ;;
+                    *)       rank=3 ;;
+                esac
+            fi
+
+            printf "%s\t%s\t%s\t%s\n" "${rank}" "${avail}" "${media}" "${mp}" >> "${CANDIDATES_FILE}"
+        done < <(df -B1 -P -T 2>/dev/null | awk '
+            NR>1 && $2 !~ /^(tmpfs|devtmpfs|squashfs|overlay|iso9660|udev|efivarfs|ramfs|proc|sysfs|cgroup.*|autofs)$/ {
+                mp = $7;
+                if (mp != "/" && mp !~ /^\/(boot|efi|snap|proc|sys|dev|run)(\/|$)/ && $5 > 0) {
+                    print $1, $2, $5, mp;
+                }
+            }')
+
+        BEST_LINE="$(awk -v min="${MIN_PREFERRED_BYTES}" '$2 >= min' "${CANDIDATES_FILE}" | sort -k1,1n -k2,2rn | head -n 1 || true)"
+        if [[ -z "${BEST_LINE}" ]]; then
+            BEST_LINE="$(sort -k1,1n -k2,2rn "${CANDIDATES_FILE}" | head -n 1 || true)"
+        fi
+        rm -f "${CANDIDATES_FILE}"
+
+        if [[ -n "${BEST_LINE}" ]]; then
+            BEST_MEDIA="$(echo "${BEST_LINE}" | cut -f3)"
+            BEST_MOUNT="$(echo "${BEST_LINE}" | cut -f4-)"
+            BEST_MOUNT="${BEST_MOUNT%/}"
+            DATA_DIR="${BEST_MOUNT}/aarkam/kdouja"
+            FREE_GB="$(df -BG -P "${BEST_MOUNT}" 2>/dev/null | awk 'NR==2 {print $4}')"
+            log_ok "Selected non-OS storage mount '${BEST_MOUNT}' [${BEST_MEDIA}, ${FREE_GB} free] (Preference: ${STORAGE_PREFERENCE}): ${DATA_DIR}"
+        else
+            DATA_DIR="/var/lib/kdouja"
+            log_warn "No writable non-OS storage partition detected. Falling back to OS partition: ${DATA_DIR}"
+        fi
+    fi
+
     mkdir -p "${INSTALL_DIR}" "${DATA_DIR}" "${CONFIG_DIR}"
     chmod 0755 "${DATA_DIR}"
 fi
@@ -281,4 +359,3 @@ echo -e "${CYAN} CLI Commands:  'kdouja --help' or 'kdouja-cli --help'          
 echo -e "${CYAN} Server Daemon: 'kdoujad' or 'sudo systemctl start kdoujad'           ${NC}"
 echo -e "${GREEN} Environment:   '${INSTALL_DIR}' is configured in PATH               ${NC}"
 echo -e "${GREEN}======================================================================${NC}"
-EOF

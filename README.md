@@ -152,7 +152,9 @@ await foreach (var kv in engine.ScanAsync(Encoding.UTF8.GetBytes("user:"), Encod
 
 ## 🛠️ 2. Standalone CLI Tooling (`kdouja`)
 
-`kdouja` is built with `System.CommandLine` and provides administrative inspection, recovery, compaction, benchmarking, and an interactive shell. Running `kdouja` with no arguments (or `kdouja repl`) enters interactive REPL mode:
+`kdouja` is built with `System.CommandLine` and provides administrative inspection, recovery, compaction, benchmarking, zero-trust authentication, sovereign licensing, and an interactive shell. Running `kdouja` with no arguments (or `kdouja repl`) enters interactive REPL mode.
+
+> 📖 **Full CLI Reference:** See the [**Kdouja CLI Commands Guide (`COMMANDS_GUIDE.md`)**](./COMMANDS_GUIDE.md) for complete documentation of all commands, global options, output formats, authentication, licensing, environment variables, exit codes, and Docker recipes.
 
 ```bash
 # Launch interactive administrative REPL shell
@@ -193,6 +195,8 @@ Exposed gRPC services:
 * **`aarkam.kdouja.KeyValueService`**: Pure KV operations (`Get`, `Put`, `Delete`, `WriteBatch`, `Scan`, `GetMetrics`).
 * **`aarkam.kdouja.StorageService`**: High-level chunk streaming service (`StoreChunk`, `RetrieveChunk`).
 * **Health Probes**: `/healthz` HTTP endpoint.
+
+> 🌍 **Multi-Language gRPC Integration (Go, Java, Python, Node.js/TS, Rust, C++, C, PHP, .NET):** See the [**Multi-Language Integration Guide (`MULTI_LANGUAGE_INTEGRATION_GUIDE.md`)**](./MULTI_LANGUAGE_INTEGRATION_GUIDE.md) and canonical schema [`protos/kdouja.proto`](./protos/kdouja.proto).
 
 ---
 

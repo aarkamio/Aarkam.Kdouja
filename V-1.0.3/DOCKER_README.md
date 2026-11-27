@@ -3,7 +3,7 @@
 # Aarkam Kdouja — Sovereign LSM & Direct-I/O Storage Engine
 ### Autonomous Log-Structured Merge Storage Engine, Direct NVMe PageStore & High-Throughput Substrate
 
-[![Version](https://img.shields.io/badge/version-v1.0.2--GA-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
+[![Version](https://img.shields.io/badge/version-v1.0.3--GA-blue.svg?style=for-the-badge&logo=semver)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![Docker Image](https://img.shields.io/badge/docker-aarkam%2Faarkam.kdouja-2496ED.svg?style=for-the-badge&logo=docker)](https://hub.docker.com/r/aarkam/aarkam.kdouja)
 [![Target OS](https://img.shields.io/badge/platform-Linux%20x64%20%7C%20Windows%20x64-333333.svg?style=for-the-badge&logo=linux)](https://github.com/aarkamio/Aarkam.Kdouja)
 [![Architecture](https://img.shields.io/badge/arch-x86__64%20(AVX2)-orange.svg?style=for-the-badge)](https://github.com/aarkamio/Aarkam.Kdouja)
@@ -34,26 +34,44 @@ Engineered strictly for **zero-egress, air-gapped sovereign datacenters**, Kdouj
 ```bash
 docker pull aarkam/aarkam.kdouja:latest
 # or explicit version
-docker pull aarkam/aarkam.kdouja:v1.0.2
+docker pull aarkam/aarkam.kdouja:v1.0.3
 ```
 
 ---
 
 ## 3. Usage Modes
 
-### Mode A: Autonomous Storage Daemon (`kdoujad`)
+### Mode A: Autonomous Storage Daemon (`kdoujad`) — Direct I/O Production Setup
 
-Run Kdouja as an autonomous background daemon exposing high-throughput gRPC services (`KeyValueService` and `StorageService`) on port **57771**:
+Run Kdouja as an autonomous background daemon exposing high-throughput gRPC services (`KeyValueService` and `StorageService`) on port **57771**.
+
+> **Performance Best Practice (Direct I/O & Non-OS NVMe):** Always bind-mount `/var/lib/kdouja` directly onto a **dedicated non-OS NVMe/SSD partition** (`ext4`/`xfs` on Linux, NTFS on Windows) and raise `nofile`/`memlock` ulimits. Avoid Docker's default container overlayfs or OS-drive volumes for production workloads.
 
 ```bash
+# Linux (dedicated NVMe mount at /mnt/nvme/aarkam/kdouja)
 docker run -d \
   --name kdouja-server \
   -p 57771:57771 \
-  -v kdouja_data:/var/lib/kdouja \
+  --ulimit nofile=65536:65536 \
+  --ulimit memlock=-1:-1 \
+  -v /mnt/nvme/aarkam/kdouja:/var/lib/kdouja \
   -e KDOUJA_BASE_DIRECTORY="/var/lib/kdouja" \
-  -e KDOUJA_MEMTABLE_FLUSH_MB="32" \
-  -e KDOUJA_ENABLE_DIRECT_IO="false" \
-  aarkam/aarkam.kdouja:v1.0.2
+  -e KDOUJA_MEMTABLE_FLUSH_MB="64" \
+  -e KDOUJA_PAGE_SIZE_BYTES="4096" \
+  -e KDOUJA_ENABLE_DIRECT_IO="true" \
+  -e KDOUJA_ENABLE_WAL_FSYNC="true" \
+  aarkam/aarkam.kdouja:v1.0.3
+```
+
+```powershell
+# Windows (Docker Desktop — dedicated non-OS NVMe drive F:\)
+docker run -d `
+  --name kdouja-server `
+  -p 57771:57771 `
+  -v "F:\Aarkam\Kdouja\data:/var/lib/kdouja" `
+  -e KDOUJA_ENABLE_DIRECT_IO="true" `
+  -e KDOUJA_MEMTABLE_FLUSH_MB="64" `
+  aarkam/aarkam.kdouja:v1.0.3
 ```
 
 Check server health:
@@ -65,7 +83,9 @@ curl http://localhost:57771/healthz
 
 ### Mode B: Enterprise CLI & Inspector (`kdouja`)
 
-Use the bundled `kdouja` tool to query keys, inspect SSTables, view metrics, trigger compactions, or run the interactive shell. Note that `--dir` automatically defaults to `/var/lib/kdouja` (`KDOUJA_BASE_DIRECTORY`):
+Use the bundled `kdouja` tool to query keys, inspect SSTables, view metrics, trigger compactions, manage authentication and licenses, or run the interactive shell. Note that `--dir` automatically defaults to `/var/lib/kdouja` (`KDOUJA_BASE_DIRECTORY`).
+
+> 📖 **Full CLI Reference:** See the [**Kdouja CLI Commands Guide (`COMMANDS_GUIDE.md`)**](./COMMANDS_GUIDE.md) for every command, flag, exit code, environment variable, and Docker automation recipe.
 
 ```bash
 # Display engine diagnostics in structured JSON
@@ -114,12 +134,13 @@ docker run -it --rm \
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `KDOUJA_BASE_DIRECTORY` | `/var/lib/kdouja` | Path to persistent database directory |
-| `KDOUJA_MEMTABLE_FLUSH_MB` | `32` | Size threshold in MB to flush MemTable to L0 SSTable |
+| `KDOUJA_MEMTABLE_FLUSH_MB` | `64` | Size threshold in MB to flush MemTable to L0 SSTable |
 | `KDOUJA_MAX_L0_FILES` | `4` | Number of L0 SSTables before triggering compaction |
-| `KDOUJA_ENABLE_DIRECT_IO` | `false` | Enable unbuffered Direct I/O (`O_DIRECT`) on Linux |
-| `KDOUJA_PAGE_SIZE` | `4096` | Direct I/O page allocation size in bytes (4KB) |
+| `KDOUJA_ENABLE_DIRECT_IO` | `true` | Enable write-through / Direct I/O on PageStore segments (`.aarkam`) |
+| `KDOUJA_PAGE_SIZE_BYTES` | `4096` | Direct I/O 4KB sector-aligned page allocation size in bytes |
 | `KDOUJA_ENABLE_WAL_FSYNC` | `true` | Force hardware fsync barrier on every commit |
 | `KDOUJA_WAL_KEY` | *(Auto-generated)* | 64-character hex AES-256 key for WAL at-rest encryption |
+| `DOTNET_gcServer` | `1` | Enables high-throughput .NET Server GC for concurrent storage workloads |
 | `DOTNET_CLI_TELEMETRY_OPTOUT`| `1` | Disables telemetry for hardened air-gapped environments |
 
 ---
@@ -133,25 +154,37 @@ docker run -it --rm \
 
 ---
 
-## 7. Docker Compose Example
+## 7. Docker Compose Example (Direct I/O & Non-OS NVMe)
+
+See [`docker-compose.yml`](./docker-compose.yml):
 
 ```yaml
-version: '3.8'
-
 services:
   kdouja:
-    image: aarkam/aarkam.kdouja:v1.0.2
+    image: aarkam/aarkam.kdouja:v1.0.3
     container_name: aarkam-kdouja
     restart: unless-stopped
     ports:
       - "57771:57771"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      memlock:
+        soft: -1
+        hard: -1
     environment:
       - KDOUJA_BASE_DIRECTORY=/var/lib/kdouja
+      - KDOUJA_ENABLE_DIRECT_IO=true
+      - KDOUJA_PAGE_SIZE_BYTES=4096
       - KDOUJA_MEMTABLE_FLUSH_MB=64
       - KDOUJA_ENABLE_WAL_FSYNC=true
-      - KDOUJA_ENABLE_DIRECT_IO=false
+      - DOTNET_gcServer=1
+      - DOTNET_GCConserveMemory=0
+      - DOTNET_TieredPGO=1
     volumes:
-      - ./kdouja_data:/var/lib/kdouja
+      # Bind-mount directly to a non-OS NVMe/SSD partition (override via KDOUJA_HOST_DATA_DIR)
+      - ${KDOUJA_HOST_DATA_DIR:-/mnt/nvme/aarkam/kdouja}:/var/lib/kdouja
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:57771/healthz"]
       interval: 10s
@@ -167,3 +200,4 @@ services:
 - **100% Air-Gapped**: Runs entirely offline in disconnected data centers.
 - **Zero Kernel Thrashing**: Sector-aligned Direct I/O eliminates dirty-page memory leaks on long-running nodes.
 - **Documentation**: [https://github.com/aarkamio/Aarkam.Kdouja](https://github.com/aarkamio/Aarkam.Kdouja)
+- **CLI Commands Guide**: [`COMMANDS_GUIDE.md`](./COMMANDS_GUIDE.md)

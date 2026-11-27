@@ -59,6 +59,6 @@ Engineered to operate either as an in-process embedded storage library or an aut
 ## 4. Verification Checksums
 
 ```text
-17f5d3733fdff119d717d17994f8019a85ba8bba91e17c82af9c4712cc555c87  kdouja-v1.0.3-linux-x64.zip
-ee3645a2ce3761162c80f01b92ddca639715b61ec2af97b6fadd66387778eb8b  kdouja-v1.0.3-win-x64.zip
+e637b7a732f15c1907ac3ade39e0598c119d72dddf11d8ab735d003f9da4a907  kdouja-v1.0.3-linux-x64.zip
+8c914a0615e21d42ff39dfd5dc853f312fb89859e56ef1bc62c5801c4d011289  kdouja-v1.0.3-win-x64.zip
 ```

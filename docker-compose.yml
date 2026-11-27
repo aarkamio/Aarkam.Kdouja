@@ -1,0 +1,33 @@
+services:
+  kdouja:
+    image: aarkam/aarkam.kdouja:v1.0.3
+    container_name: aarkam-kdouja
+    restart: unless-stopped
+    ports:
+      - "57771:57771"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      memlock:
+        soft: -1
+        hard: -1
+    environment:
+      - KDOUJA_BASE_DIRECTORY=/var/lib/kdouja
+      - KDOUJA_ENABLE_DIRECT_IO=true
+      - KDOUJA_PAGE_SIZE_BYTES=4096
+      - KDOUJA_MEMTABLE_FLUSH_MB=64
+      - KDOUJA_ENABLE_WAL_FSYNC=true
+      - DOTNET_gcServer=1
+      - DOTNET_GCConserveMemory=0
+      - DOTNET_TieredPGO=1
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    volumes:
+      # Bind-mount directly to a dedicated non-OS NVMe/SSD partition for peak Direct I/O throughput.
+      # Override via KDOUJA_HOST_DATA_DIR (e.g., F:\Aarkam\Kdouja\data on Windows or /mnt/nvme/aarkam/kdouja on Linux).
+      - ${KDOUJA_HOST_DATA_DIR:-/mnt/nvme/aarkam/kdouja}:/var/lib/kdouja
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:57771/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

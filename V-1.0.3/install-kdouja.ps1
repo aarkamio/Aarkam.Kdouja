@@ -28,7 +28,13 @@
     Default gRPC / HTTP port for Kdouja Server daemon (defaults to 57771).
 
 .PARAMETER InstallServerService
-    If specified and running with Administrator privileges, registers kdoujad as a Windows Service.
+    Registers and starts kdoujad as a Windows Service ('KdoujaServer'). Enabled by default when running as Administrator unless -SkipService or -UserOnly is specified.
+
+.PARAMETER SkipService
+    Skips registering and starting the 'KdoujaServer' Windows Service.
+
+.PARAMETER StoragePreference
+    Storage media priority when auto-selecting a non-OS data drive: 'Performance' (default: NVMe -> SSD -> Virtual -> HDD) or 'Capacity' (HDD -> Virtual -> SSD -> NVMe).
 
 .PARAMETER UserOnly
     Installs exclusively for the current user without requiring Administrator elevation.
@@ -37,7 +43,10 @@
     .\install-kdouja.ps1
 
 .EXAMPLE
-    .\install-kdouja.ps1 -InstallServerService
+    .\install-kdouja.ps1 -StoragePreference Capacity
+
+.EXAMPLE
+    .\install-kdouja.ps1 -SkipService
 
 .EXAMPLE
     .\install-kdouja.ps1 -UserOnly
@@ -49,7 +58,10 @@ param(
     [string]$DataDir = "",
     [string]$SourcePath = "",
     [int]$Port = 57771,
+    [ValidateSet("Performance", "Capacity")]
+    [string]$StoragePreference = "Performance",
     [switch]$InstallServerService,
+    [switch]$SkipService,
     [switch]$UserOnly
 )
 
@@ -99,11 +111,79 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
-    if ($isAdmin -and -not $UserOnly.IsPresent) {
+    $osDriveRoot = (($env:SystemDrive).TrimEnd('\') + "\").ToUpperInvariant()
+    $minPreferredBytes = 10GB
+
+    $candidates = @()
+    foreach ($drv in [System.IO.DriveInfo]::GetDrives()) {
+        if ($drv.DriveType -ne [System.IO.DriveType]::Fixed -or -not $drv.IsReady) { continue }
+        if ($drv.RootDirectory.FullName.ToUpperInvariant() -eq $osDriveRoot) { continue }
+        if ($drv.AvailableFreeSpace -le 0) { continue }
+
+        $letter = $drv.Name.Substring(0, 1)
+        $mediaClass = "Unknown"
+        try {
+            $part = Get-Partition -DriveLetter $letter -ErrorAction Stop | Select-Object -First 1
+            $disk = Get-Disk -Number $part.DiskNumber -ErrorAction Stop
+            $phys = Get-PhysicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.DeviceId -eq "$($disk.Number)" } | Select-Object -First 1
+
+            $busType = if ($phys -and $phys.BusType) { "$($phys.BusType)" } else { "$($disk.BusType)" }
+            $mediaType = if ($phys -and $phys.MediaType) { "$($phys.MediaType)" } else { "Unspecified" }
+
+            if ($busType -ieq "NVMe") {
+                $mediaClass = "NVMe"
+            } elseif ($mediaType -ieq "SSD") {
+                $mediaClass = "SSD"
+            } elseif ($mediaType -ieq "HDD") {
+                $mediaClass = "HDD"
+            }
+        } catch {
+            $mediaClass = "Unknown"
+        }
+
+        $tierRank = if ($StoragePreference -eq "Capacity") {
+            switch ($mediaClass) {
+                "HDD"     { 1 }
+                "Unknown" { 2 }
+                "SSD"     { 3 }
+                "NVMe"    { 4 }
+                default   { 2 }
+            }
+        } else {
+            switch ($mediaClass) {
+                "NVMe"    { 1 }
+                "SSD"     { 2 }
+                "Unknown" { 3 }
+                "HDD"     { 4 }
+                default   { 3 }
+            }
+        }
+
+        $candidates += [PSCustomObject]@{
+            Root        = $drv.RootDirectory.FullName
+            Name        = $drv.Name
+            MediaClass  = $mediaClass
+            TierRank    = $tierRank
+            FreeBytes   = $drv.AvailableFreeSpace
+            FreeGb      = [Math]::Round($drv.AvailableFreeSpace / 1GB, 2)
+        }
+    }
+
+    if ($candidates.Count -gt 0) {
+        # Guardrail: prefer drives with >= 10 GB free when available
+        $eligible = @($candidates | Where-Object { $_.FreeBytes -ge $minPreferredBytes })
+        if ($eligible.Count -eq 0) { $eligible = $candidates }
+
+        $bestDrive = $eligible | Sort-Object -Property @{ Expression = "TierRank"; Ascending = $true }, @{ Expression = "FreeBytes"; Ascending = $false } | Select-Object -First 1
+        $DataDir = Join-Path $bestDrive.Root "Aarkam\Kdouja\data"
+        Write-Ok "Selected non-OS storage partition '$($bestDrive.Name)' [$($bestDrive.MediaClass), $($bestDrive.FreeGb) GB free] (Preference: $StoragePreference)."
+    } elseif ($isAdmin -and -not $UserOnly.IsPresent) {
         $DataDir = Join-Path $env:ProgramData "Aarkam\Kdouja\data"
+        Write-Warn "No non-OS fixed partition detected. Falling back to OS partition: $DataDir"
     } else {
         $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
         $DataDir = Join-Path $localAppData "Aarkam\Kdouja\data"
+        Write-Warn "No non-OS fixed partition detected. Falling back to OS partition: $DataDir"
     }
 }
 
@@ -135,6 +215,18 @@ if ([string]::IsNullOrWhiteSpace($SourcePath)) {
 }
 
 Write-Info "Deploying binaries from: $SourcePath"
+
+# Stop existing KdoujaServer Windows Service if running so binaries can be replaced cleanly
+$serviceName = "KdoujaServer"
+if ($isAdmin) {
+    $runningSvc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($runningSvc -and $runningSvc.Status -ne 'Stopped') {
+        Write-Info "Stopping existing '$serviceName' service before updating binaries..."
+        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+        $runningSvc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(15))
+        Write-Ok "Stopped '$serviceName' service."
+    }
+}
 
 if ($SourcePath.EndsWith(".zip", [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path $SourcePath)) {
     $tempExtract = Join-Path ([System.IO.Path]::GetTempPath()) ("kdouja_zip_" + [System.Guid]::NewGuid().ToString("N"))
@@ -233,6 +325,11 @@ $sessionPaths = @($env:Path -split ';' | Where-Object { -not [string]::IsNullOrW
 $env:Path = (@($InstallDir) + $sessionPaths) -join ';'
 Write-Ok "Current PowerShell session PATH refreshed."
 
+# Persist KDOUJA_BASE_DIRECTORY so kdouja CLI and KdoujaServer always target the same non-OS data directory
+[System.Environment]::SetEnvironmentVariable("KDOUJA_BASE_DIRECTORY", $DataDir, $targetScope)
+$env:KDOUJA_BASE_DIRECTORY = $DataDir
+Write-Ok "Configured KDOUJA_BASE_DIRECTORY='$DataDir' in $($targetScope.ToString()) environment."
+
 # Broadcast WM_SETTINGCHANGE so running Explorer, CMD, and PowerShell pick up new PATH
 try {
     Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition @"
@@ -250,27 +347,52 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
 }
 
 # ------------------------------------------------------------------------------
-# Step 6: Optional Windows Service Registration for Kdouja Server Daemon
+# Step 6: Windows Service Registration & Startup for Kdouja Server Daemon
 # ------------------------------------------------------------------------------
-if ($InstallServerService.IsPresent) {
+$shouldInstallService = ($InstallServerService.IsPresent) -or ($isAdmin -and -not $UserOnly.IsPresent -and -not $SkipService.IsPresent)
+
+if ($shouldInstallService) {
     if ($isAdmin) {
-        Write-Info "Registering 'KdoujaServer' as a Windows Service..."
-        $serviceName = "KdoujaServer"
-        $binPath = "`"$kdoujadExe`""
-        
+        Write-Info "Registering '$serviceName' as a Windows Service..."
+        $binPathInner = '\"' + $kdoujadExe + '\" --Kdouja:BaseDirectory=\"' + $DataDir + '\" --urls=\"http://0.0.0.0:' + $Port + '\"'
+
         $existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
         if ($existingService) {
-            Write-Warn "Service '$serviceName' already exists. Updating binary path..."
-            & sc.exe config $serviceName binPath= "$binPath" start= auto | Out-Null
+            Write-Info "Service '$serviceName' already exists. Updating binary path and configuration..."
+            $scArgs = "config $serviceName binPath= `"$binPathInner`" start= auto"
+            $p = Start-Process -FilePath "sc.exe" -ArgumentList $scArgs -Wait -NoNewWindow -PassThru
+            if ($p.ExitCode -ne 0) { throw "sc.exe config failed with exit code $($p.ExitCode)" }
         } else {
-            & sc.exe create $serviceName binPath= "$binPath" start= auto DisplayName= "Aarkam Kdouja Storage Engine Daemon" | Out-Null
-            & sc.exe description $serviceName "High-throughput standalone LSM-tree and Direct I/O storage engine substrate." | Out-Null
+            $scArgs = "create $serviceName binPath= `"$binPathInner`" start= auto DisplayName= `"Aarkam Kdouja Storage Engine Daemon`""
+            $p = Start-Process -FilePath "sc.exe" -ArgumentList $scArgs -Wait -NoNewWindow -PassThru
+            if ($p.ExitCode -ne 0) { throw "sc.exe create failed with exit code $($p.ExitCode)" }
+            Start-Process -FilePath "sc.exe" -ArgumentList "description $serviceName `"High-throughput standalone LSM-tree and Direct I/O storage engine substrate.`"" -Wait -NoNewWindow | Out-Null
         }
+
+        # Configure automatic crash recovery (restart on failure)
+        Start-Process -FilePath "sc.exe" -ArgumentList "failure $serviceName reset= 86400 actions= restart/5000/restart/10000/restart/30000" -Wait -NoNewWindow | Out-Null
         Write-Ok "Windows Service '$serviceName' registered successfully (Automatic startup)."
-        Write-Info "To start service: Start-Service KdoujaServer  (or: net start KdoujaServer)"
+
+        try {
+            Write-Info "Starting '$serviceName' Windows Service..."
+            Start-Service -Name $serviceName
+            Start-Sleep -Seconds 2
+            $svcStatus = (Get-Service -Name $serviceName).Status
+            if ($svcStatus -eq 'Running') {
+                Write-Ok "Windows Service '$serviceName' is RUNNING on port $Port."
+            } else {
+                Write-Warn "Windows Service '$serviceName' status is '$svcStatus'. Check Windows Event Viewer (Application log) for details."
+            }
+        } catch {
+            Write-Warn "Registered '$serviceName', but failed to start automatically: $_"
+            Write-Info "You can inspect logs or start manually with: Start-Service $serviceName"
+        }
     } else {
-        Write-Warn "-InstallServerService was specified, but Administrator privileges are required to create Windows Services."
+        Write-Warn "Administrator privileges are required to install to 'C:\Program Files\Aarkam\Kdouja' and register '$serviceName' as a Windows Service."
+        Write-Info "Re-run PowerShell as Administrator and execute .\install-kdouja.ps1 to register the service."
     }
+} elseif (-not $isAdmin) {
+    Write-Warn "Skipped Windows Service registration (not running as Administrator). Run PowerShell as Administrator to install to 'C:\Program Files\Aarkam\Kdouja' and register '$serviceName'."
 }
 
 # ------------------------------------------------------------------------------
